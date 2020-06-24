@@ -59,6 +59,12 @@ export fn init(Project mut *self, String+PathTail *path)
   pool::make(&self->memory, 32);
 
   list::make(&self->config.cincludes);
+  list::make(&self->config.cobjects);
+  list::make(&self->config.pkgconfig);
+  list::make(&self->config.cflags);
+  list::make(&self->config.lflags);
+  list::make(&self->config.dependencies);
+  list::make(&self->config.repos);
 }
 
 export fn open(Project mut *self, Err+ErrorTail mut *error) -> bool {
