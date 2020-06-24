@@ -1,0 +1,24 @@
+[project]
+version = "0.1.0"
+name = "project"
+cincludes = [".", "src"]
+cobjects = []
+pkgconfig = []
+cflags = []
+lflags = []
+
+[variants]
+default = []
+
+[dependencies]
+ast = "*"
+pool = "*"
+list = "*"
+log = "*"
+mem = "*"
+slice = "*"
+string = "*"
+toml = "*"
+
+[repos]
+list = "git://github.com/zzmodules/list"

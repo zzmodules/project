@@ -1,0 +1,438 @@
+using err
+using err::{ assert, Err }
+using file
+using file::{ File }
+using list
+using list::{ List }
+using log
+using mem
+using pool
+using pool::{ Pool }
+using slice
+using slice::{ MutSlice }
+using string
+using string::{ String, strlen }
+using toml
+using utils
+
+export struct ProjectDependency {
+  String+32 mut version;
+  String+64 mut name;
+}
+
+export struct ProjectRepository {
+  String+64 mut name;
+  String+1024 mut url;
+}
+
+export struct ProjectConfig {
+  String+32 mut version;
+  String+64 mut name;
+  String+64000 mut description;
+  List+64 mut cincludes;
+  List+64 mut cobjects;
+  List+64 mut pkgconfig;
+  List+64 mut cflags;
+  List+64 mut lflags;
+  List+64 mut dependencies;
+  List+64 mut repos;
+}
+
+export struct Project {
+  String+1024 path;
+  ProjectConfig config;
+  Pool+256000 mut memory;
+}
+
+export fn make(Project new mut *self, String+PathTail *path)
+  where PathTail > 0
+{
+  init(self, path);
+}
+
+export fn init(Project mut *self, String+PathTail *path)
+  where PathTail > 0
+{
+  // copy path
+  path->substr(0, path->len, as<String+1024 mut *>(&self->path));
+
+  pool::make(&self->memory, 32);
+
+  list::make(&self->config.cincludes);
+}
+
+export fn open(Project mut *self, Err+ErrorTail mut *error) -> bool {
+  new mut project_file = file::make(self->path.cstr());
+
+  if error->check() {
+    return false;
+  }
+
+  if false == project_file.open(error) {
+    return false;
+  }
+
+  let stats = project_file.stat(error);
+
+  if 0 != stats.error {
+    return false;
+  }
+
+  u8 mut bytes[64000] = {0};
+  assert(static(len(bytes)) >= stats.size); // Project file (zz.toml) is too large
+  static_attest(len(bytes) >= stats.size);
+  new mut mutslice = slice::mut_slice::make(bytes, stats.size);
+  let mut bytes_read = project_file.read(&mutslice, error);
+
+  if 0 == bytes_read {
+    return false;
+  }
+
+  static_attest(len(bytes) >= bytes_read);
+
+  if !error->check() {
+    new+64000 parser = toml::parser(error, toml::U {
+      it: toml_parser_document_iterator,
+      user1: self
+    });
+
+    if error->check() {
+      return false;
+    }
+
+    parser.push(error, as<char *>(bytes), bytes_read);
+
+    if error->check() {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+fn toml_parser_document_iterator(
+  toml::U *self,
+  Err+ErrorTail mut *error,
+  toml::Parser+ParserTail mut *parser,
+  char *key,
+  toml::Value value
+)
+  where err::checked(*error)
+{
+  static_attest(safe(key));
+  static_attest(nullterm(key));
+
+  let mut *project = as<Project mut *>(self->user1);
+
+  if error->check() {
+    return;
+  }
+
+  if utils::compare_string("project", key) {
+    toml::next(parser, error, toml::U {
+      it: toml_parser_project_iterator,
+      user1: project
+    });
+  } else if utils::compare_string("dependencies", key) {
+    toml::next(parser, error, toml::U {
+      it: toml_parser_dependencies_iterator,
+      user1: project
+    });
+  } else if utils::compare_string("repos", key) {
+    toml::next(parser, error, toml::U {
+      it: toml_parser_repos_iterator,
+      user1: project
+    });
+  }
+}
+
+fn toml_parser_project_iterator(
+  toml::U *self,
+  Err+ErrorTail mut *error,
+  toml::Parser+ParserTail mut *parser,
+  char *key,
+  toml::Value value
+)
+  where err::checked(*error)
+{
+  static_attest(safe(key));
+  static_attest(nullterm(key));
+
+  if error->check() {
+    return;
+  }
+
+  let mut *project = as<Project mut *>(self->user1);
+  if 0 != project {
+    static_attest(safe(project));
+    if utils::compare_string("version", key) {
+      static_attest(safe(value.string));
+      static_attest(nullterm(value.string));
+      project->config.version.append_cstr(value.string);
+    } else if utils::compare_string("name", key) {
+      static_attest(safe(value.string));
+      static_attest(nullterm(value.string));
+      project->config.name.append_cstr(value.string);
+    } else if utils::compare_string("description", key) {
+      static_attest(safe(value.string));
+      static_attest(nullterm(value.string));
+      project->config.description.append_cstr(value.string);
+    } else if utils::compare_string("cincludes", key) {
+      toml::next(parser, error, toml::U {
+        it: toml_parser_project_cincludes_iterator,
+        user1: project
+      });
+    } else if utils::compare_string("cobjects", key) {
+      toml::next(parser, error, toml::U {
+        it: toml_parser_project_cobjects_iterator,
+        user1: project
+      });
+    } else if utils::compare_string("pkgconfig", key) {
+      toml::next(parser, error, toml::U {
+        it: toml_parser_project_pkgconfig_iterator,
+        user1: project
+      });
+    } else if utils::compare_string("cflags", key) {
+      toml::next(parser, error, toml::U {
+        it: toml_parser_project_cflags_iterator,
+        user1: project
+      });
+    } else if utils::compare_string("lflags", key) {
+      toml::next(parser, error, toml::U {
+        it: toml_parser_project_cobjects_iterator,
+        user1: project
+        });
+    }
+  }
+}
+
+fn toml_parser_project_cincludes_iterator(
+  toml::U *self,
+  Err+ErrorTail mut *error,
+  toml::Parser+ParserTail mut *parser,
+  char *key,
+  toml::Value value
+)
+  where err::checked(*error)
+{
+  static_attest(safe(key));
+  static_attest(nullterm(key));
+
+  if error->check() {
+    return;
+  }
+
+  let mut *project = as<Project mut *>(self->user1);
+  if 0 != project {
+    static_attest(safe(project));
+    static_attest(safe(value.string));
+    static_attest(nullterm(value.string));
+
+    let size = strlen(value.string);
+    let mut copy = project->memory.malloc(size);
+
+    static_attest(safe(copy));
+    static_attest(len(copy) >= size);
+
+    mem::copy(value.string, copy, size);
+    project->config.cincludes.push(copy);
+  }
+}
+
+fn toml_parser_project_cobjects_iterator(
+  toml::U *self,
+  Err+ErrorTail mut *error,
+  toml::Parser+ParserTail mut *parser,
+  char *key,
+  toml::Value value
+)
+  where err::checked(*error)
+{
+  static_attest(safe(key));
+  static_attest(nullterm(key));
+
+  if error->check() {
+    return;
+  }
+
+  let mut *project = as<Project mut *>(self->user1);
+  if 0 != project {
+    static_attest(safe(project));
+    static_attest(safe(value.string));
+    static_attest(nullterm(value.string));
+
+    let size = strlen(value.string);
+    let mut copy = project->memory.malloc(size);
+
+    static_attest(safe(copy));
+    static_attest(len(copy) >= size);
+
+    mem::copy(value.string, copy, size);
+    project->config.cobjects.push(copy);
+  }
+}
+
+fn toml_parser_project_pkgconfig_iterator(
+  toml::U *self,
+  Err+ErrorTail mut *error,
+  toml::Parser+ParserTail mut *parser,
+  char *key,
+  toml::Value value
+)
+  where err::checked(*error)
+{
+  static_attest(safe(key));
+  static_attest(nullterm(key));
+
+  if error->check() {
+    return;
+  }
+
+  let mut *project = as<Project mut *>(self->user1);
+  if 0 != project {
+    static_attest(safe(project));
+    static_attest(safe(value.string));
+    static_attest(nullterm(value.string));
+
+    let size = strlen(value.string);
+    let mut copy = project->memory.malloc(size);
+
+    static_attest(safe(copy));
+    static_attest(len(copy) >= size);
+
+    mem::copy(value.string, copy, size);
+    project->config.pkgconfig.push(copy);
+  }
+}
+
+fn toml_parser_project_cflags_iterator(
+  toml::U *self,
+  Err+ErrorTail mut *error,
+  toml::Parser+ParserTail mut *parser,
+  char *key,
+  toml::Value value
+)
+  where err::checked(*error)
+{
+  static_attest(safe(key));
+  static_attest(nullterm(key));
+
+  if error->check() {
+    return;
+  }
+
+  let mut *project = as<Project mut *>(self->user1);
+  if 0 != project {
+    static_attest(safe(project));
+    static_attest(safe(value.string));
+    static_attest(nullterm(value.string));
+
+    let size = strlen(value.string);
+    let mut copy = project->memory.malloc(size);
+
+    static_attest(safe(copy));
+    static_attest(len(copy) >= size);
+
+    mem::copy(value.string, copy, size);
+    project->config.cflags.push(copy);
+  }
+}
+
+fn toml_parser_project_lflags_iterator(
+  toml::U *self,
+  Err+ErrorTail mut *error,
+  toml::Parser+ParserTail mut *parser,
+  char *key,
+  toml::Value value
+)
+  where err::checked(*error)
+{
+  static_attest(safe(key));
+  static_attest(nullterm(key));
+
+  if error->check() {
+    return;
+  }
+
+  let mut *project = as<Project mut *>(self->user1);
+  if 0 != project {
+    static_attest(safe(project));
+    static_attest(safe(value.string));
+    static_attest(nullterm(value.string));
+
+    let size = strlen(value.string);
+    let mut copy = project->memory.malloc(size);
+
+    static_attest(safe(copy));
+    static_attest(len(copy) >= size);
+
+    mem::copy(value.string, copy, size);
+    project->config.lflags.push(copy);
+  }
+}
+
+fn toml_parser_dependencies_iterator(
+  toml::U *self,
+  Err+ErrorTail mut *error,
+  toml::Parser+ParserTail mut *parser,
+  char *key,
+  toml::Value value
+)
+  where err::checked(*error)
+{
+  static_attest(safe(key));
+  static_attest(nullterm(key));
+
+  if error->check() {
+    return;
+  }
+
+  let mut *project = as<Project mut *>(self->user1);
+  if 0 != project {
+    static_attest(safe(project));
+    static_attest(safe(value.string));
+    static_attest(nullterm(value.string));
+
+    ProjectDependency mut *dep = project->memory.malloc(sizeof(ProjectDependency));
+
+    static_attest(safe(dep));
+
+    dep->name.append_cstr(key);
+    dep->version.append_cstr(value.string);
+
+    project->config.dependencies.push(dep);
+  }
+}
+
+fn toml_parser_repos_iterator(
+  toml::U *self,
+  Err+ErrorTail mut *error,
+  toml::Parser+ParserTail mut *parser,
+  char *key,
+  toml::Value value
+)
+  where err::checked(*error)
+{
+  static_attest(safe(key));
+  static_attest(nullterm(key));
+
+  if error->check() {
+    return;
+  }
+
+  let mut *project = as<Project mut *>(self->user1);
+  if 0 != project {
+    static_attest(safe(project));
+    static_attest(safe(value.string));
+    static_attest(nullterm(value.string));
+
+    ProjectRepository mut *repo = project->memory.malloc(sizeof(ProjectRepository));
+
+    static_attest(safe(repo));
+
+    repo->name.append_cstr(key);
+    repo->url.append_cstr(value.string);
+
+    project->config.repos.push(repo);
+  }
+}

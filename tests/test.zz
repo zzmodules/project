@@ -1,0 +1,82 @@
+using err
+using err::{ assert }
+using log
+using project
+using string
+
+fn main() -> int {
+  new+1024 mut error = err::make();
+  new+1024 mut path = string::make();
+
+  path.append_cstr("zz.toml");
+
+  new mut proj = project::make(&path);
+  bool status = proj.open(&error);
+
+  if error.check() {
+    log::error("%s", error.trace.cstr());
+  }
+
+  assert(status);
+  log::info("name=%s", proj.config.name.cstr());
+  log::info("version=%s", proj.config.version.cstr());
+
+  {
+    let mut it = proj.config.cincludes.iterator();
+    while !it.ended {
+      let node = it.next();
+      log::info("%s", node->value);
+    }
+  }
+
+  {
+    let mut it = proj.config.cobjects.iterator();
+    while !it.ended {
+      let node = it.next();
+      log::info("%s", node->value);
+    }
+  }
+
+  {
+    let mut it = proj.config.pkgconfig.iterator();
+    while !it.ended {
+      let node = it.next();
+      log::info("%s", node->value);
+    }
+  }
+
+  {
+    let mut it = proj.config.cflags.iterator();
+    while !it.ended {
+      let node = it.next();
+      log::info("%s", node->value);
+    }
+  }
+
+  {
+    let mut it = proj.config.lflags.iterator();
+    while !it.ended {
+      let node = it.next();
+      log::info("%s", node->value);
+    }
+  }
+
+  {
+    let mut it = proj.config.dependencies.iterator();
+    while !it.ended {
+      let node = it.next();
+      let dep = as<project::ProjectDependency *>(node->value);
+      log::info("%s = %s", dep->name.cstr(), dep->version.cstr());
+    }
+  }
+
+  {
+    let mut it = proj.config.repos.iterator();
+    while !it.ended {
+      let node = it.next();
+      let dep = as<project::ProjectRepository *>(node->value);
+      log::info("%s = %s", dep->name.cstr(), dep->url.cstr());
+    }
+  }
+  return 0;
+}

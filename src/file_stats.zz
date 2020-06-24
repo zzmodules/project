@@ -1,0 +1,86 @@
+using <stdio.h>::{ stat as native_stat, printf }
+using "file_stats.h"::{ native_stat_buffer }
+
+using ast
+using err::{ Err }
+
+export struct StatsTimeSpec {
+  int sec;
+  int nsec;
+}
+
+export struct Stats {
+  u64 dev;
+  u64 mode;
+  u64 nlink;
+  u64 uid;
+  u64 gid;
+  u64 rdev;
+  u64 ino;
+  usize size;
+  usize blksize;
+  usize blocks;
+  StatsTimeSpec atim;
+  StatsTimeSpec mtim;
+  StatsTimeSpec ctim;
+  Err *error;
+}
+
+// `@copy_timespec(which)`
+macro copy_stat() {
+  new+1024 ctx = ast::from_macro();
+  let target = ctx.args[0].v.string;
+  let from = ctx.args[1].v.string;
+  let which = ctx.args[2].v.string;
+  printf("%s.%s = unsafe<u64>(%s.st_%s);\n", target, which, from, which);
+}
+
+// `@copy_timespec(which)`
+macro copy_timespec() {
+  new+1024 ctx = ast::from_macro();
+  let target = ctx.args[0].v.string;
+  let from = ctx.args[1].v.string;
+  let which = ctx.args[2].v.string;
+  printf("%s.%s.sec = unsafe<int>(%s.st_%s.tv_sec);\n", target, which, from, which);
+  printf("%s.%s.nsec = unsafe<int>(%s.st_%s.tv_nsec);\n", target, which, from, which);
+}
+
+// types with tails need to be dynamic because macros used in function
+// with tails cause compile errors
+// @TODO(jwerle): report this issue through a reproduction/regression
+export fn stat_with_error_tail(
+  char *path,
+  Err mut *error_unbound,
+  usize ErrorTail
+) -> Stats {
+  Err+ErrorTail mut *error = as<Err mut *>(error_unbound);
+  native_stat_buffer mut statbuf;
+  Stats mut stats;
+
+  let status = unsafe<int>(native_stat(path, &statbuf));
+
+  if 0 != status {
+    error->fail_with_errno("Failed to stat file: %s", path);
+    return Stats { error };
+  }
+
+  @copy_stat("stats", "statbuf", "dev");
+  @copy_stat("stats", "statbuf", "mode");
+  @copy_stat("stats", "statbuf", "nlink");
+  @copy_stat("stats", "statbuf", "uid");
+  @copy_stat("stats", "statbuf", "gid");
+  @copy_stat("stats", "statbuf", "rdev");
+  @copy_stat("stats", "statbuf", "ino");
+
+  stats.size = unsafe<usize>(statbuf.st_size);
+  stats.blocks = unsafe<usize>(statbuf.st_blocks);
+  stats.blksize = unsafe<usize>(statbuf.st_blksize);
+
+  @copy_timespec("stats", "statbuf", "atim");
+  @copy_timespec("stats", "statbuf", "mtim");
+  @copy_timespec("stats", "statbuf", "ctim");
+
+  stats.error = 0;
+
+  return stats;
+}

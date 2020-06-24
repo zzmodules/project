@@ -1,0 +1,92 @@
+using <stdio.h>::{ FILE, fopen, fread, fclose, printf }
+using <stddef.h>::{ size_t }
+using <sys/stat.h> as sysstat
+
+using err::{ Err }
+using file_stats
+using file_stats::{ Stats }
+using log
+using slice::{ MutSlice }
+
+export symbol FileNotOpenedError;
+
+export struct File {
+  FILE *file;
+  char *path;
+}
+
+export fn make(File new mut *self, char *path)
+  model safe(self->path)
+  where safe(path)
+{
+  init(self, path);
+  static_attest(safe(self->path));
+}
+
+export fn init(File mut *self, char *path)
+  model safe(self->path)
+  where safe(path)
+{
+  self->path = path;
+  static_attest(safe(self->path));
+}
+
+export fn open(File mut *self, Err+ErrorTail mut *error) -> bool
+  model safe(self->path)
+{
+  if 0 != self->path {
+    static_attest(safe(self->path));
+    self->file = unsafe<FILE *>(fopen(self->path, "r"));
+  }
+
+  if 0 == self->file {
+    error->fail_with_errno("Failed to open file: %s", self->path);
+    return false;
+  }
+
+  return true;
+}
+
+export fn close(File mut *self, Err+ErrorTail mut *error) -> bool {
+  if 0 == self->file {
+    error->fail(FileNotOpenedError, "File is not opened: %s", self->path);
+    return false;
+  }
+
+  let status = unsafe<int>(fclose(as<FILE mut *>(self->file)));
+
+  if 0 != status {
+    error->fail_with_errno("Failed to close file: %s", self->path);
+    return false;
+  }
+
+  self->file = 0;
+
+  return true;
+}
+
+export fn read(File mut *self, MutSlice mut *mutslice, Err+ErrorTail mut *error) -> usize {
+  if 0 == self->file {
+    error->fail(FileNotOpenedError, "File is not opened: %s", self->path);
+    return 0;
+  }
+
+  let mut stream = as<FILE mut *>(self->file);
+  let mut out = mutslice->mem();
+  let size = mutslice->slice.size;
+  let status = unsafe<usize>(fread(out, sizeof(u8), size, stream));
+
+  if size != status {
+    error->fail_with_errno("Failed to read file: %s", self->path);
+    return 0;
+  }
+
+  return size;
+}
+
+export fn stat(File *self, Err+ErrorTail mut *error) -> Stats
+  model safe(self->path)
+  where safe(self->path)
+{
+  return file_stats::stat_with_error_tail(self->path, error, ErrorTail);
+}

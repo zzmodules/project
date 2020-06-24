@@ -1,0 +1,18 @@
+using mem
+using string::{ strlen }
+
+export fn compare_string(char *left, char *right) -> bool {
+  static_attest(safe(left));
+  static_attest(safe(right));
+  static_attest(nullterm(left));
+  static_attest(nullterm(right));
+
+  let left_size = strlen(left);
+  let right_size = strlen(right);
+
+  if left_size == right_size {
+    return mem::eq(left, right, left_size);
+  }
+
+  return false;
+}
