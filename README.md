@@ -1,7 +1,7 @@
 project
 =======
 
-> [WIP] ZZ Project API
+> ZZ Project API
 
 ## Installation
 
