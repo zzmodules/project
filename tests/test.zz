@@ -8,7 +8,7 @@ fn main() -> int {
   new+1024 mut error = err::make();
   new+1024 mut path = string::make();
 
-  path.append_cstr("zz.toml");
+  path.append_cstr("./");
 
   new mut proj = project::make(&path);
   bool status = proj.open(&error);
@@ -77,6 +77,18 @@ fn main() -> int {
       let dep = as<project::ProjectRepository *>(node->value);
       log::info("%s = %s", dep->name.cstr(), dep->url.cstr());
     }
+  }
+
+  {
+    new+64000 mut output = string::make();
+    proj.to_toml(&output);
+    log::info("\n%s", output.cstr());
+  }
+
+  {
+    new+64000 mut output = string::make();
+    proj.to_json(&output);
+    log::info("\n%s", output.cstr());
   }
   return 0;
 }
