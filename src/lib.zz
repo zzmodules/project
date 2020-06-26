@@ -1,3 +1,5 @@
+using <libgen.h>::{ dirname, basename }
+
 using err
 using err::{ assert, Err }
 using file
@@ -15,16 +17,46 @@ using string::{ String, strlen }
 using toml
 using utils
 
+/**
+ * A closure for a custom function to output TOML called in `to_toml()`.
+ */
+export closure CustomToTOML(Project *self, String+OutputTail mut *output);
+
+/**
+ * A closure for a custom function to output JSON called in `to_json()`.
+ */
+export closure CustomToJSON(Project *self, String+OutputTail mut *output);
+
+/**
+ * Max size in bytes that a project's manifest file can be.
+ */
+export const usize MANIFEST_MAX_BYTES = 64000;
+
+/**
+ * The project's manifest base file name.
+ */
+export const char *MANIFEST_FILENAME = "zz.toml";
+
+/**
+ * A structure that represents a project dependency.
+ */
 export struct ProjectDependency {
   String+32 mut version;
   String+64 mut name;
 }
 
+/**
+ * A structure that represents a project dependency repository.
+ */
 export struct ProjectRepository {
   String+64 mut name;
   String+1024 mut url;
 }
 
+/**
+ * A structure that represents the configuration for a project, as seen
+ * in a `zz.toml` file.
+ */
 export struct ProjectConfig {
   String+32 mut version;
   String+64 mut name;
@@ -38,23 +70,84 @@ export struct ProjectConfig {
   List+64 mut repos;
 }
 
+/**
+ * A structure that represents an interface for custom functions to extend the
+ * parsing and serialization of a project.
+ */
+export struct ProjectCustomInterface {
+  void mut *data;
+  toml::Iter mut toml_parser_document_iterator;
+  CustomToTOML mut to_toml;
+  CustomToJSON mut to_json;
+}
+
+/**
+ * A structure that represents a ZZ project. When opened, the project's
+ * `zz.toml` file is parsed and its values are loaded.
+ */
 export struct Project {
   String+1024 path;
   ProjectConfig config;
+  ProjectCustomInterface mut custom;
   Pool+256000 mut memory;
 }
 
+/**
+ * `Project` structure constructor.
+ * @param path - The path to the project
+ */
 export fn make(Project new mut *self, String+PathTail *path)
   where PathTail > 0
 {
   init(self, path);
 }
 
+/**
+ * `Project` structure initializer.
+ * @param path - The path to the project
+ */
 export fn init(Project mut *self, String+PathTail *path)
   where PathTail > 0
 {
+  new+1024 mut tmp = string::make();
   // copy path
   path->substr(0, path->len, as<String+1024 mut *>(&self->path));
+  path->substr(0, path->len, &tmp);
+
+  let mut pathptr = as<String+1024 mut *>(&self->path);
+  let pathstr = self->path.cstr();
+  let size = self->path.len;
+
+  static_attest(safe(pathptr));
+  static_attest(size == len(pathstr));
+
+  if size > 0 {
+    let bname = as<char *>(basename(as<char mut *>(tmp.cstr())));
+
+    if 0 != bname {
+      static_attest(safe(bname));
+      static_attest(nullterm(bname));
+      if strlen(bname) != static(len(MANIFEST_FILENAME)) {
+        if '/' != pathstr[size - 1] {
+          pathptr->push('/');
+        }
+        pathptr->append_cstr(MANIFEST_FILENAME);
+      } else {
+        static_attest(len(MANIFEST_FILENAME) == len(bname));
+        if false == mem::eq(MANIFEST_FILENAME, bname, static(len(MANIFEST_FILENAME))) {
+          if '/' != pathstr[size - 1] {
+            pathptr->push('/');
+          }
+          pathptr->append_cstr(MANIFEST_FILENAME);
+        }
+      }
+    } else {
+      pathptr->append_cstr(MANIFEST_FILENAME);
+    }
+  }
+
+  dirname(as<char mut *>(pathptr->cstr()));
+  pathptr->len = strlen(pathptr->cstr());
 
   pool::make(&self->memory, 32);
 
@@ -67,8 +160,19 @@ export fn init(Project mut *self, String+PathTail *path)
   list::make(&self->config.repos);
 }
 
-export fn open(Project mut *self, Err+ErrorTail mut *error) -> bool {
-  new mut project_file = file::make(self->path.cstr());
+/**
+ * Opens the project, parsing the "zz.toml" values into memory. This function
+ * returns `true` upon success, or `false` if an error occurs. The `error`
+ * given to this function should be checked.
+ * @param error - An checked error that should be checked after this function is called
+ */
+export fn open(Project mut *self, Err+ErrorTail mut *error) -> bool
+  where err::checked(*error)
+{
+  new+1024 mut tmp_path = string::make();
+  self->path.substr(0, self->path.slen(), &tmp_path);
+  tmp_path.format("/%s", MANIFEST_FILENAME); // windows?
+  new mut project_file = file::make(tmp_path.cstr());
 
   if error->check() {
     return false;
@@ -84,7 +188,7 @@ export fn open(Project mut *self, Err+ErrorTail mut *error) -> bool {
     return false;
   }
 
-  u8 mut bytes[64000] = {0};
+  u8 mut bytes[MANIFEST_MAX_BYTES] = {0};
   assert(static(len(bytes)) >= stats.size); // Project file (zz.toml) is too large
   static_attest(len(bytes) >= stats.size);
   new mut mutslice = slice::mut_slice::make(bytes, stats.size);
@@ -114,6 +218,228 @@ export fn open(Project mut *self, Err+ErrorTail mut *error) -> bool {
   }
 
   return true;
+}
+
+/**
+ * Converts the project instance into TOML output. Set `custom.to_toml` to
+ * emit custom sections.
+ * @param output - Output string to write TOML to
+ */
+export fn to_toml(Project *self, String+OutputTail mut *output)
+  where OutputTail >= MANIFEST_MAX_BYTES
+{
+  output->append_cstr("[project]\n");
+  output->format("name = \"%s\"\n", self->config.name.cstr());
+  output->format("version = \"%s\"\n", self->config.version.cstr());
+
+  output->append_cstr("cincludes = ["); {
+    let mut it = self->config.cincludes.iterator();
+    while !it.ended {
+      let node = it.next();
+      output->format("\"%s\"", node->value);
+      if !it.ended {
+        output->append_cstr(", ");
+      }
+    }
+  } output->append_cstr("]\n");
+
+  output->append_cstr("cobjects = ["); {
+    let mut it = self->config.cobjects.iterator();
+    while !it.ended {
+      let node = it.next();
+      output->format("\"%s\"", node->value);
+      if !it.ended {
+        output->append_cstr(", ");
+      }
+    }
+  } output->append_cstr("]\n");
+
+  output->append_cstr("pkgconfig = ["); {
+    let mut it = self->config.pkgconfig.iterator();
+    while !it.ended {
+      let node = it.next();
+      output->format("\"%s\"", node->value);
+      if !it.ended {
+        output->append_cstr(", ");
+      }
+    }
+  } output->append_cstr("]\n");
+
+  output->append_cstr("cflags = ["); {
+    let mut it = self->config.cflags.iterator();
+    while !it.ended {
+      let node = it.next();
+      output->format("\"%s\"", node->value);
+      if !it.ended {
+        output->append_cstr(", ");
+      }
+    }
+  } output->append_cstr("]\n");
+
+  output->append_cstr("lflags = ["); {
+    let mut it = self->config.lflags.iterator();
+    while !it.ended {
+      let node = it.next();
+      output->format("\"%s\"", node->value);
+      if !it.ended {
+        output->append_cstr(", ");
+      }
+    }
+  } output->append_cstr("]\n");
+
+  output->append_cstr("\n[dependencies]\n"); {
+    let mut it = self->config.dependencies.iterator();
+    while !it.ended {
+      let node = it.next();
+      let dep = as<ProjectDependency *>(node->value);
+      output->format("%s = \"%s\"\n", dep->name.cstr(), dep->version.cstr());
+    }
+  }
+
+  output->append_cstr("\n[repos]\n"); {
+    let mut it = self->config.repos.iterator();
+    while !it.ended {
+      let node = it.next();
+      let repo = as<ProjectRepository *>(node->value);
+      output->format("%s = \"%s\"\n", repo->name.cstr(), repo->url.cstr());
+    }
+  }
+
+  if 0 != self->custom.to_toml.fn {
+    static_attest(safe(self->custom.to_toml));
+    self->custom.to_toml(self, output);
+  }
+}
+
+/**
+ * Converts the project instance into JSON output. Set `custom.to_json` to
+ * emit custom key-value pairs.
+ * @param output - Output string to write JSON to
+ */
+export fn to_json(Project *self, String+OutputTail mut *output)
+  where OutputTail >= MANIFEST_MAX_BYTES
+{
+  output->append_cstr("{\n");
+  output->append_cstr("  \"project\": {\n");
+       output->format("    \"name\": \"%s\",\n", self->config.name.cstr());
+       output->format("    \"version\": \"%s\",\n", self->config.version.cstr());
+  output->append_cstr("    \"cincludes\": ["); {
+    let mut it = self->config.cincludes.iterator();
+    while !it.ended {
+      let node = it.next();
+      output->format("\n      \"%s\"", node->value);
+      if !it.ended {
+        output->append_cstr(",");
+      } else {
+        output->append_cstr("\n    ");
+      }
+    }
+  } output->append_cstr("],\n");
+
+  output->append_cstr("    \"cobjects\": ["); {
+    let mut it = self->config.cobjects.iterator();
+    while !it.ended {
+      let node = it.next();
+      output->format("\n      \"%s\"", node->value);
+      if !it.ended {
+        output->append_cstr(",");
+      } else {
+        output->append_cstr("\n    ");
+      }
+    }
+  } output->append_cstr("],\n");
+
+  output->append_cstr("    \"pkgconfig\": ["); {
+    let mut it = self->config.pkgconfig.iterator();
+    while !it.ended {
+      let node = it.next();
+      output->format("\n      \"%s\"", node->value);
+      if !it.ended {
+        output->append_cstr(",");
+      } else {
+        output->append_cstr("\n    ");
+      }
+    }
+  } output->append_cstr("],\n");
+
+  output->append_cstr("    \"cflags\": ["); {
+    let mut it = self->config.cflags.iterator();
+    while !it.ended {
+      let node = it.next();
+      output->format("\n       \"%s\"", node->value);
+      if !it.ended {
+        output->append_cstr(",");
+      } else {
+        output->append_cstr("\n    ");
+      }
+    }
+  } output->append_cstr("],\n");
+
+  output->append_cstr("    \"lflags\": ["); {
+    let mut it = self->config.lflags.iterator();
+    while !it.ended {
+      let node = it.next();
+      output->format("\n       \"%s\"", node->value);
+      if !it.ended {
+        output->append_cstr(",");
+      } else {
+        output->append_cstr("\n    ");
+      }
+    }
+  } output->append_cstr("],\n");
+
+  output->append_cstr("    \"dependencies\": {"); {
+    let mut it = self->config.dependencies.iterator();
+    while !it.ended {
+      let node = it.next();
+      let dep = as<ProjectDependency *>(node->value);
+      output->format("\n      \"%s\": \"%s\"", dep->name.cstr(), dep->version.cstr());
+      if !it.ended {
+        output->append_cstr(",");
+      } else {
+        output->append_cstr("\n    ");
+      }
+    }
+  } output->append_cstr("},\n");
+
+  output->append_cstr("    \"repos\": {"); {
+    let mut it = self->config.repos.iterator();
+    while !it.ended {
+      let node = it.next();
+      let repo = as<ProjectRepository *>(node->value);
+      output->format("\n      \"%s\": \"%s\"", repo->name.cstr(), repo->url.cstr());
+      if !it.ended {
+        output->append_cstr(",");
+      } else {
+        output->append_cstr("\n    ");
+      }
+    }
+  } output->append_cstr("}");
+
+  if 0 != self->custom.to_json.fn {
+    output->push(',');
+    output->push('\n');
+    static_attest(safe(self->custom.to_json));
+    self->custom.to_json(self, output);
+  } else {
+    output->push('\n');
+  }
+
+  static_attest(output->len > 2);
+  static_attest(len(output->mem) >= output->len - 2);
+  let ch = output->mem[output->len - 1];
+  let pch = output->mem[output->len - 2];
+  log::info("%c", ch);
+  if ',' == ch  {
+    output->pop();
+  } else if (',' == pch && '\n' == ch) {
+    output->pop();
+    output->pop();
+    output->push('\n');
+  }
+
+  output->append_cstr("  }\n");
+  output->append_cstr("}");
 }
 
 fn toml_parser_document_iterator(
@@ -149,6 +475,12 @@ fn toml_parser_document_iterator(
       it: toml_parser_repos_iterator,
       user1: project
     });
+  } else if 0 != project {
+    static_attest(safe(project));
+    if 0 != project->custom.toml_parser_document_iterator.fn {
+      static_attest(safe(project->custom.toml_parser_document_iterator));
+      project->custom.toml_parser_document_iterator(self, error, parser, key, value);
+    }
   }
 }
 
