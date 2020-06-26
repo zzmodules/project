@@ -22,11 +22,7 @@ using project
 
 fn main() -> int {
   new+1024 mut error = err::make();
-  new+1024 mut path = string::make();
-
-  path.append_cstr("./");
-
-  new mut proj = project::make(&path);
+  new mut proj = project::current();
   bool status = proj.open(&error);
 
   if error.check() {
