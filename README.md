@@ -95,6 +95,15 @@ struct ProjectDependency {
 }
 ```
 
+### `new mut p = project::current()`
+
+`Project` constructor that gets the default project based on the callsite
+of this function.
+
+```c++
+new mut proj = project::current();
+```
+
 ### `new mut p = project::make(&path)`
 
 `Project` structure constructor.
@@ -112,6 +121,114 @@ to this function should be checked.
 ```c++
 new+1024 mut error = err::make();
 bool status = proj.open(&error);
+```
+
+#### `name = p.name()`
+
+Accessor for the project's name.
+
+```c++
+log::info("%s", proj.name());
+```
+
+#### `name = p.version()`
+
+Accessor for the project's version.
+
+```c++
+log::info("%s", proj.version());
+```
+
+#### `name = p.description()`
+
+Accessor for the project's description.
+
+```c++
+log::info("%s", proj.description());
+```
+
+#### `name = p.cincludes()`
+
+Accessor for the project's cincludes as a list iterator.
+
+```c++
+let mut cincludes = proj.cincludes();
+while !cincludes.ended {
+  let cinclude = as<char *>(cincludes.next()->value);
+  log::info("%s", cinclude);
+}
+```
+
+#### `name = p.cobjects()`
+
+Accessor for the project's cobjects as a list iterator.
+
+```c++
+let mut cobjects = proj.cobjects();
+while !cobjects.ended {
+  let cinclude = as<char *>(cobjects.next()->value);
+  log::info("%s", cinclude);
+}
+```
+
+#### `name = p.pkgconfig()`
+
+Accessor for the project's pkgconfig as a list iterator.
+
+```c++
+let mut pkgconfig = proj.pkgconfig();
+while !pkgconfig.ended {
+  let cinclude = as<char *>(pkgconfig.next()->value);
+  log::info("%s", cinclude);
+}
+```
+
+#### `name = p.cflags()`
+
+Accessor for the project's cflags as a list iterator.
+
+```c++
+let mut cflags = proj.cflags();
+while !cflags.ended {
+  let cinclude = as<char *>(cflags.next()->value);
+  log::info("%s", cinclude);
+}
+```
+
+#### `name = p.lflags()`
+
+Accessor for the project's lflags as a list iterator.
+
+```c++
+let mut lflags = proj.lflags();
+while !lflags.ended {
+  let cinclude = as<char *>(lflags.next()->value);
+  log::info("%s", cinclude);
+}
+```
+
+#### `name = p.dependencies()`
+
+Accessor for the project's dependencies as a list iterator.
+
+```c++
+let mut dependencies = proj.config.dependencies.iterator();
+while !dependencies.ended {
+  let dependency = as<ProjectDependency *>(dependencies.next()->value);
+  log::info("%s = %s", dependency->name.cstr(), dependency->version.cstr());
+}
+```
+
+#### `name = p.repos()`
+
+Accessor for the project's repos as a list iterator.
+
+```c++
+let mut repos = proj.config.repos.iterator();
+while !repos.ended {
+  let repo = as<ProjectRepository *>(repos.next()->value);
+  log::info("%s = %s", repo->name.cstr(), repo->url.cstr());
+}
 ```
 
 ### Custom TOML Document Parser
