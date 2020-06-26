@@ -1,6 +1,7 @@
 using err
 using err::{ assert }
 using log
+using mem
 using project
 using string
 
@@ -85,6 +86,15 @@ fn main() -> int {
     new+64000 mut output = string::make();
     proj.to_json(&output);
     log::info("\n%s", output.cstr());
+  }
+
+  log::info("%s", proj.name());
+  log::info("%s", proj.version());
+  log::info("%s", proj.description());
+  let mut cincludes = proj.cincludes();
+  while !cincludes.ended {
+    let cinclude = as<char *>(cincludes.next()->value);
+    log::info("%s", cinclude);
   }
   return 0;
 }
