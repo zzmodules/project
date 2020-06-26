@@ -93,6 +93,25 @@ export struct Project {
 }
 
 /**
+ * `Project` constructor that gets the default project based on the callsite
+ * of this function.
+ */
+export fn current(Project new mut *self, char* callsite_source<file> unsafe mut file) {
+  if 0 != file {
+    static_attest(safe(file));
+    static_attest(nullterm(file));
+
+    new+1024 mut tmp = string::make();
+    tmp.append_cstr(file);
+    dirname(dirname(as<char mut *>(tmp.mem)));
+    tmp.len = strlen(tmp.cstr());
+    static_attest(tmp.len == len(tmp.mem));
+    new+1024 mut path = string::from(as<u8 *>(tmp.mem), tmp.len);
+    make(self, &path);
+  }
+}
+
+/**
  * `Project` structure constructor.
  * @param path - The path to the project
  */
