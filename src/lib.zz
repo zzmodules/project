@@ -5,7 +5,7 @@ using err::{ assert, Err }
 using file
 using file::{ File }
 using list
-using list::{ List }
+using list::{ List, Iterator }
 using log
 using mem
 using pool
@@ -237,6 +237,76 @@ export fn open(Project mut *self, Err+ErrorTail mut *error) -> bool
   }
 
   return true;
+}
+
+/**
+ * Accessor for the project's name.
+ */
+export fn name(Project *self) -> char * {
+  return self->config.name.cstr();
+}
+
+/**
+ * Accessor for the project's version.
+ */
+export fn version(Project *self) -> char * {
+  return self->config.version.cstr();
+}
+
+/**
+ * Accessor for the project's description.
+ */
+export fn description(Project *self) -> char * {
+  return self->config.description.cstr();
+}
+
+/**
+ * Accessor for the project's cincludes as a list iterator.
+ */
+export fn cincludes(Project *self) -> Iterator {
+  return self->config.cincludes.iterator();
+}
+
+/**
+ * Accessor for the project's cobjects as a list iterator.
+ */
+export fn cobjects(Project *self) -> Iterator {
+  return self->config.cobjects.iterator();
+}
+
+/**
+ * Accessor for the project's pkgconfig as a list iterator.
+ */
+export fn pkgconfig(Project *self) -> Iterator {
+  return self->config.pkgconfig.iterator();
+}
+
+/**
+ * Accessor for the project's cflags as a list iterator.
+ */
+export fn cflags(Project *self) -> Iterator {
+  return self->config.cflags.iterator();
+}
+
+/**
+ * Accessor for the project's lflags as a list iterator.
+ */
+export fn lflags(Project *self) -> Iterator {
+  return self->config.lflags.iterator();
+}
+
+/**
+ * Accessor for the project's dependencies as a list iterator.
+ */
+export fn dependencies(Project *self) -> Iterator {
+  return self->config.dependencies.iterator();
+}
+
+/**
+ * Accessor for the project's repos as a list iterator.
+ */
+export fn repos(Project *self) -> Iterator {
+  return self->config.repos.iterator();
 }
 
 /**
