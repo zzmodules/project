@@ -49,7 +49,7 @@ file is parsed and its values are loaded.
 
 ```c++
 struct Project {
-  String+1024 path;
+  Path path;
   ProjectConfig config;
 }
 ```
@@ -104,12 +104,12 @@ of this function.
 new mut proj = project::current();
 ```
 
-### `new mut p = project::make(&path)`
+### `new mut p = project::make(&pathname)`
 
 `Project` structure constructor.
 
 ```c++
-new mut proj = project::make(&path);
+new mut proj = project::make(&pathname);
 ```
 
 #### `p.open(&error)`
@@ -239,17 +239,16 @@ sections in the `zz.toml` file not handled by the default
 
 ```c++
 using err
+using path
+using project
 using toml
 using string
-using project
 
 fn main() -> int {
   new+1024 mut error = err::make();
-  new+1024 mut path = string::make();
+  new project_path = path::canonicalize("./");
 
-  path.append_cstr("./");
-
-  new mut proj = project::make(&path);
+  new mut proj = project::make(&project_path.string);
   proj.custom.toml_parser_document_iterator = toml_parser_document_iterator;
 
   if !proj.open(&error) {

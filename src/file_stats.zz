@@ -49,7 +49,7 @@ macro copy_timespec() {
 // with tails cause compile errors
 // @TODO(jwerle): report this issue through a reproduction/regression
 export fn stat_with_error_tail(
-  char *path,
+  char *pathname,
   Err mut *error_unbound,
   usize ErrorTail
 ) -> Stats {
@@ -57,10 +57,10 @@ export fn stat_with_error_tail(
   native_stat_buffer mut statbuf;
   Stats mut stats;
 
-  let status = unsafe<int>(native_stat(path, &statbuf));
+  let status = unsafe<int>(native_stat(pathname, &statbuf));
 
   if 0 != status {
-    error->fail_with_errno("Failed to stat file: %s", path);
+    error->fail_with_errno("Failed to stat file: %s", pathname);
     return Stats { error };
   }
 

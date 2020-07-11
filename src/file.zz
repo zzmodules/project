@@ -12,35 +12,35 @@ export symbol FileNotOpenedError;
 
 export struct File {
   FILE *file;
-  char *path;
+  char *pathname;
 }
 
-export fn make(File new mut *self, char *path)
-  model safe(self->path)
-  where safe(path)
+export fn make(File new mut *self, char *pathname)
+  model safe(self->pathname)
+  where safe(pathname)
 {
-  init(self, path);
-  static_attest(safe(self->path));
+  init(self, pathname);
+  static_attest(safe(self->pathname));
 }
 
-export fn init(File mut *self, char *path)
-  model safe(self->path)
-  where safe(path)
+export fn init(File mut *self, char *pathname)
+  model safe(self->pathname)
+  where safe(pathname)
 {
-  self->path = path;
-  static_attest(safe(self->path));
+  self->pathname = pathname;
+  static_attest(safe(self->pathname));
 }
 
 export fn open(File mut *self, Err+ErrorTail mut *error) -> bool
-  model safe(self->path)
+  model safe(self->pathname)
 {
-  if 0 != self->path {
-    static_attest(safe(self->path));
-    self->file = unsafe<FILE *>(fopen(self->path, "r"));
+  if 0 != self->pathname {
+    static_attest(safe(self->pathname));
+    self->file = unsafe<FILE *>(fopen(self->pathname, "r"));
   }
 
   if 0 == self->file {
-    error->fail_with_errno("Failed to open file: %s", self->path);
+    error->fail_with_errno("Failed to open file: %s", self->pathname);
     return false;
   }
 
@@ -49,14 +49,14 @@ export fn open(File mut *self, Err+ErrorTail mut *error) -> bool
 
 export fn close(File mut *self, Err+ErrorTail mut *error) -> bool {
   if 0 == self->file {
-    error->fail(FileNotOpenedError, "File is not opened: %s", self->path);
+    error->fail(FileNotOpenedError, "File is not opened: %s", self->pathname);
     return false;
   }
 
   let status = unsafe<int>(fclose(as<FILE mut *>(self->file)));
 
   if 0 != status {
-    error->fail_with_errno("Failed to close file: %s", self->path);
+    error->fail_with_errno("Failed to close file: %s", self->pathname);
     return false;
   }
 
@@ -67,7 +67,7 @@ export fn close(File mut *self, Err+ErrorTail mut *error) -> bool {
 
 export fn read(File mut *self, MutSlice mut *mutslice, Err+ErrorTail mut *error) -> usize {
   if 0 == self->file {
-    error->fail(FileNotOpenedError, "File is not opened: %s", self->path);
+    error->fail(FileNotOpenedError, "File is not opened: %s", self->pathname);
     return 0;
   }
 
@@ -77,7 +77,7 @@ export fn read(File mut *self, MutSlice mut *mutslice, Err+ErrorTail mut *error)
   let status = unsafe<usize>(fread(out, sizeof(u8), size, stream));
 
   if size != status {
-    error->fail_with_errno("Failed to read file: %s", self->path);
+    error->fail_with_errno("Failed to read file: %s", self->pathname);
     return 0;
   }
 
@@ -85,8 +85,8 @@ export fn read(File mut *self, MutSlice mut *mutslice, Err+ErrorTail mut *error)
 }
 
 export fn stat(File *self, Err+ErrorTail mut *error) -> Stats
-  model safe(self->path)
-  where safe(self->path)
+  model safe(self->pathname)
+  where safe(self->pathname)
 {
-  return file_stats::stat_with_error_tail(self->path, error, ErrorTail);
+  return file_stats::stat_with_error_tail(self->pathname, error, ErrorTail);
 }

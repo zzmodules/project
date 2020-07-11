@@ -1,14 +1,25 @@
 using err
-using err::{ assert }
 using log
 using mem
+using path
 using project
+using runtime_assert::{ assert }
 using string
 
 fn main() -> int {
+  bool mut status = false;
+
   new+1024 mut error = err::make();
+  new project_path = path::canonicalize("./", &error);
   new mut proj = project::current();
-  bool status = proj.open(&error);
+  //new mut proj = project::make(&project_path.buffer.string);
+
+  log::info("-- %s", project_path.cstr());
+  if !error.check() {
+    status = proj.open(&error);
+  }
+
+  log::info("project path: %s", proj.path.cstr());
 
   if error.check() {
     log::error("%s", error.trace.cstr());
